@@ -1,3 +1,4 @@
 pefile
+yara-python
 watchdog
 pyinstaller
