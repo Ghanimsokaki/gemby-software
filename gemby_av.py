@@ -23,7 +23,12 @@ APP, VERSION = "GembyAV", "1.0.0"
 DATA = Path(os.environ.get("APPDATA", Path.home() / ".config")) / APP
 QUAR, SIGFILE, LOGFILE = DATA / "quarantine", DATA / "signatures.json", DATA / "scan.log"
 RULES_DIR = DATA / "rules"  # drop any .yar / .yara files here
-UPDATE_URL = ""  # <- put the URL of your signatures.json (hosted on your Arena site) here
+# Signature feed published by the web portal. Override per-machine with the
+# GEMBYAV_UPDATE_URL environment variable (e.g. your own Vercel deployment).
+UPDATE_URL = os.environ.get(
+    "GEMBYAV_UPDATE_URL",
+    "https://raw.githubusercontent.com/Ghanimsokaki/gemby-software/main/signatures.json",
+)
 MAX_READ = 8 * 1024 * 1024
 EXEC_EXT = {".exe", ".dll", ".scr", ".sys", ".com", ".msi", ".bat", ".cmd", ".ps1", ".vbs", ".js", ".jse", ".wsf", ".hta", ".lnk", ".jar"}
 SKIP_DIRS = {"windows", "$recycle.bin", "system volume information", "winsxs", "node_modules", ".git"}
@@ -233,7 +238,9 @@ def delete_quarantined(qid):
 
 def update_signatures():
     if not UPDATE_URL:
-        raise RuntimeError("UPDATE_URL is not set in gemby_av.py")
+        raise RuntimeError(
+            "No signature feed configured. Set GEMBYAV_UPDATE_URL or edit UPDATE_URL in gemby_av.py."
+        )
     req = urllib.request.Request(UPDATE_URL, headers={"User-Agent": f"{APP}/{VERSION}"})
     with urllib.request.urlopen(req, timeout=20) as r:
         new = json.loads(r.read().decode())

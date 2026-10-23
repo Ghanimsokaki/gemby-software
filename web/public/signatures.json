@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "generated": "Signature feed for GembyAV. Consumed by the in-app 'Update Signatures' button (UPDATE_URL / GEMBYAV_UPDATE_URL).",
+  "docs": "https://github.com/Ghanimsokaki/gemby-software#signature-updates",
+  "hashes": {},
+  "patterns": [
+    {
+      "name": "EICAR-Test-File",
+      "regex": "EICAR-STANDARD-ANTIVIRUS-TEST-FILE",
+      "score": 100
+    },
+    {
+      "name": "PS.EncodedCommand",
+      "regex": "powershell(\\.exe)?\\s+.{0,80}-(enc|encodedcommand)\\s+[A-Za-z0-9+/=]{40,}",
+      "score": 45
+    },
+    {
+      "name": "PS.DownloadCradle",
+      "regex": "(iex|invoke-expression).{0,60}(downloadstring|webclient|downloadfile)",
+      "score": 55
+    },
+    {
+      "name": "Certutil.Download",
+      "regex": "certutil.{0,40}-urlcache",
+      "score": 45
+    },
+    {
+      "name": "Credential.Dumper",
+      "regex": "sekurlsa::logonpasswords|lsadump::sam",
+      "score": 90
+    },
+    {
+      "name": "Ransom.Note",
+      "regex": "your files (have been|are) encrypted",
+      "score": 55
+    },
+    {
+      "name": "VBS.ShellExec",
+      "regex": "wscript\\.shell.{0,120}\\.(run|exec)\\(",
+      "score": 25
+    },
+    {
+      "name": "Bitsadmin.Download",
+      "regex": "bitsadmin.{0,40}/transfer",
+      "score": 40
+    },
+    {
+      "name": "Mshta.Remote",
+      "regex": "mshta(vbscript:|\\s+https?://)",
+      "score": 50
+    },
+    {
+      "name": "Reg.Persistence.Run",
+      "regex": "reg\\s+add\\s+.{0,80}\\\\CurrentVersion\\\\Run",
+      "score": 40
+    },
+    {
+      "name": "Schtasks.Persistence",
+      "regex": "schtasks\\s+/create\\s+.{0,120}/(tr|sc)",
+      "score": 35
+    },
+    {
+      "name": "Defender.Tamper",
+      "regex": "set-mppreference\\s+.{0,80}-disable(realtimemonitoring|ioavprotection|behaviormonitoring)",
+      "score": 80
+    },
+    {
+      "name": "AMSI.Bypass",
+      "regex": "amsi\\.initfailed|\\[ref\\]\\.assembly\\.gettype\\(.system\\.management\\.automation\\.amsicontext",
+      "score": 75
+    }
+  ],
+  "yara": "rule EICAR_Test_File {\n  meta:\n    score = 100\n  strings:\n    $e = \"EICAR-STANDARD-ANTIVIRUS-TEST-FILE\"\n  condition:\n    $e\n}\n\nrule Suspicious_PowerShell_Download {\n  meta:\n    score = 55\n  strings:\n    $a = \"DownloadString\" nocase\n    $b = \"IEX\" nocase\n    $c = \"-nop\" nocase\n    $d = \"-w hidden\" nocase\n  condition:\n    $a and ($b or $c or $d)\n}\n\nrule Generic_Ransom_Note {\n  meta:\n    score = 55\n  strings:\n    $a = \"your files have been encrypted\" nocase\n    $b = \"bitcoin\" nocase\n    $c = \"decrypt\" nocase\n  condition:\n    $a and ($b or $c)\n}\n\nrule Webshell_PHP_Generic {\n  meta:\n    score = 70\n  strings:\n    $a = /eval\\s*\\(\\s*(base64_decode|gzinflate|str_rot13)/ nocase\n    $b = \"$_POST\"\n    $c = \"$_REQUEST\"\n  condition:\n    $a and ($b or $c)\n}\n\nrule Defender_Tampering {\n  meta:\n    score = 80\n  strings:\n    $a = \"Set-MpPreference\" nocase\n    $b = \"DisableRealtimeMonitoring\" nocase\n    $c = \"DisableBehaviorMonitoring\" nocase\n  condition:\n    $a and ($b or $c)\n}\n"
+}

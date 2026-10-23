@@ -1,0 +1,27 @@
+# deps / build output
+node_modules/
+.next/
+out/
+build/
+dist/
+
+# the installer is copied here at build time by scripts/prepare-assets.mjs
+# (it already lives in git at the repo root, no need to store 14 MB twice)
+public/downloads/*.exe
+public/downloads/*.json
+
+# local dev user store
+.data/
+
+# env
+.env
+.env*.local
+
+# misc
+.DS_Store
+*.pem
+npm-debug.log*
+yarn-error.log*
+.vercel
+next-env.d.ts
+tsconfig.tsbuildinfo
