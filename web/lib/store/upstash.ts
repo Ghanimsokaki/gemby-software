@@ -30,23 +30,37 @@ export function isUpstashConfigured(): boolean {
   return config() !== null;
 }
 
+const REQUEST_TIMEOUT_MS = Number(process.env.UPSTASH_TIMEOUT_MS || 8000);
+
 async function cmd<T>(args: unknown[]): Promise<T> {
   const c = config();
   if (!c) throw new Error("Upstash is not configured");
-  const res = await fetch(c.url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${c.token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(args),
-    // never let Vercel cache auth data
-    cache: "no-store",
-  });
-  if (!res.ok) throw new Error(`Upstash HTTP ${res.status}`);
-  const json = (await res.json()) as { result?: T; error?: string };
-  if (json.error) throw new Error(json.error);
-  return json.result as T;
+
+  // Bounded: an unreachable Redis must degrade to the next backend, not hang
+  // the sign-in request until the platform kills it.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  timer.unref?.();
+
+  try {
+    const res = await fetch(c.url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${c.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(args),
+      signal: controller.signal,
+      // never let Vercel cache auth data
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error(`Upstash HTTP ${res.status}`);
+    const json = (await res.json()) as { result?: T; error?: string };
+    if (json.error) throw new Error(json.error);
+    return json.result as T;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function parse(raw: string | null): StoredUser | null {

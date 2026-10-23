@@ -17,5 +17,5 @@ export const assetManifest: AssetManifest = {
   ],
   "releaseUrl": "https://github.com/Ghanimsokaki/gemby-software/releases",
   "repositoryUrl": "https://github.com/Ghanimsokaki/gemby-software",
-  "preparedAt": "2026-10-23T09:47:26.734Z"
+  "preparedAt": "2026-10-23T13:23:09.313Z"
 };

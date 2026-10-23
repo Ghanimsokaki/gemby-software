@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import type { StoredUser, UserStore } from "./types";
 import { normalizeEmail } from "./types";
@@ -39,16 +39,49 @@ async function persist(db: DB): Promise<void> {
   writable = true;
 }
 
-export async function isFileStoreWritable(): Promise<boolean> {
-  if (writable !== null) return writable;
+/**
+ * Bound any filesystem probe.
+ *
+ * This matters more than it looks: `fs.mkdir(..., { recursive: true })` does
+ * not reliably throw on an exotic read-only mount — on some filesystems it
+ * blocks indefinitely. An unbounded probe here would hang every sign-in
+ * request instead of degrading to memory mode.
+ */
+const PROBE_TIMEOUT_MS = 1500;
+
+function withTimeout<T>(work: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise<T>((resolvePromise) => {
+    const timer = setTimeout(() => resolvePromise(fallback), ms);
+    // Never keep the process alive just for a probe.
+    timer.unref?.();
+    work.then(
+      (v) => {
+        clearTimeout(timer);
+        resolvePromise(v);
+      },
+      () => {
+        clearTimeout(timer);
+        resolvePromise(fallback);
+      },
+    );
+  });
+}
+
+async function probe(): Promise<boolean> {
   try {
     await mkdir(dirname(FILE), { recursive: true });
-    const probe = join(dirname(FILE), ".write-probe");
-    await writeFile(probe, "ok", "utf8");
-    writable = true;
+    const p = join(dirname(FILE), `.write-probe-${process.pid}`);
+    await writeFile(p, "ok", "utf8");
+    await rm(p, { force: true });
+    return true;
   } catch {
-    writable = false;
+    return false;
   }
+}
+
+export async function isFileStoreWritable(): Promise<boolean> {
+  if (writable !== null) return writable;
+  writable = await withTimeout(probe(), PROBE_TIMEOUT_MS, false);
   return writable;
 }
 
