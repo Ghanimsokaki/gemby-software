@@ -1,0 +1,165 @@
+/**
+ * prepare-assets.mjs
+ * ------------------
+ * Stages the Windows installer into `public/downloads/` so the portal can
+ * serve it straight off Vercel's CDN.
+ *
+ * Resolution order (first hit wins):
+ *   1. ../GembyAV.exe          -> normal case: the binary is committed at the
+ *                                 repo root, one level above this app.
+ *   2. $GEMBYAV_EXE_PATH       -> explicit override for weird CI layouts.
+ *   3. GitHub (raw/main)       -> fallback when the app is built outside the
+ *                                 repo checkout.
+ *
+ * This script NEVER fails the build. If no installer can be found the portal
+ * still renders and the download button degrades to a direct GitHub link.
+ */
+import { createHash } from "node:crypto";
+import { copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const here = dirname(fileURLToPath(import.meta.url));
+const appRoot = resolve(here, "..");
+const repoRoot = resolve(appRoot, "..");
+const outDir = join(appRoot, "public", "downloads");
+const outFile = join(outDir, "GembyAV.exe");
+const metaFile = join(outDir, "manifest.json");
+
+const REPO = process.env.GEMBYAV_REPO || "Ghanimsokaki/gemby-software";
+const BRANCH = process.env.GEMBYAV_BRANCH || "main";
+const MIRRORS = [
+  `https://github.com/${REPO}/raw/${BRANCH}/GembyAV.exe`,
+  `https://raw.githubusercontent.com/${REPO}/${BRANCH}/GembyAV.exe`,
+];
+
+const VERSION = process.env.GEMBYAV_VERSION || "1.0.0";
+
+const sha256 = (buf) => createHash("sha256").update(buf).digest("hex");
+
+const fmtBytes = (n) => {
+  if (n >= 1024 ** 3) return `${(n / 1024 ** 3).toFixed(2)} GB`;
+  if (n >= 1024 ** 2) return `${(n / 1024 ** 2).toFixed(2)} MB`;
+  if (n >= 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${n} B`;
+};
+
+async function exists(p) {
+  try {
+    await stat(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function findLocal() {
+  const candidates = [
+    process.env.GEMBYAV_EXE_PATH,
+    join(repoRoot, "GembyAV.exe"),
+    join(appRoot, "GembyAV.exe"),
+    join(repoRoot, "dist", "GembyAV.exe"),
+  ].filter(Boolean);
+
+  for (const c of candidates) {
+    if (await exists(c)) return c;
+  }
+  return null;
+}
+
+async function fetchRemote() {
+  for (const url of MIRRORS) {
+    try {
+      const res = await fetch(url, { redirect: "follow" });
+      if (!res.ok) continue;
+      const buf = Buffer.from(await res.arrayBuffer());
+      // A real onefile PyInstaller build is several MB; anything smaller is an
+      // LFS pointer, a 404 page or a rate-limit body.
+      if (buf.length < 1024 * 1024) continue;
+      if (buf.subarray(0, 2).toString("latin1") !== "MZ") continue;
+      console.log(`[assets] downloaded installer from ${url}`);
+      return buf;
+    } catch (err) {
+      console.log(`[assets] mirror failed (${url}): ${err.message}`);
+    }
+  }
+  return null;
+}
+
+async function main() {
+  await mkdir(outDir, { recursive: true });
+
+  let bytes = null;
+  let source = null;
+
+  const local = await findLocal();
+  if (local) {
+    bytes = await readFile(local);
+    source = `repo:${local.replace(repoRoot, "").replace(/\\/g, "/") || "GembyAV.exe"}`;
+    if (!(await exists(outFile)) || (await stat(outFile)).size !== bytes.length) {
+      await copyFile(local, outFile);
+    }
+    console.log(`[assets] staged ${source} (${fmtBytes(bytes.length)})`);
+  } else {
+    bytes = await fetchRemote();
+    if (bytes) {
+      await writeFile(outFile, bytes);
+      source = "github";
+      console.log(`[assets] staged github mirror (${fmtBytes(bytes.length)})`);
+    }
+  }
+
+  const available = Boolean(bytes);
+  const manifest = {
+    product: "GembyAV",
+    version: VERSION,
+    filename: "GembyAV.exe",
+    available,
+    bundled: available && source !== null,
+    source,
+    sizeBytes: bytes ? bytes.length : null,
+    sizeLabel: bytes ? fmtBytes(bytes.length) : null,
+    sha256: bytes ? sha256(bytes) : null,
+    mirrors: MIRRORS,
+    releaseUrl: `https://github.com/${REPO}/releases`,
+    repositoryUrl: `https://github.com/${REPO}`,
+    preparedAt: new Date().toISOString(),
+  };
+
+  await writeFile(metaFile, `${JSON.stringify(manifest, null, 2)}\n`);
+
+  // The desktop app pulls signature updates from this site, so the canonical
+  // signatures.json (repo root) is published here too.
+  const sigSource = join(repoRoot, "signatures.json");
+  if (await exists(sigSource)) {
+    await copyFile(sigSource, join(outDir, "..", "signatures.json"));
+    console.log("[assets] published signatures.json");
+  }
+
+  // Vercel serves public/ from the CDN, which is not necessarily visible on
+  // the function filesystem — so mirror the manifest into a TS module that
+  // route handlers and server components can import directly.
+  const tsDir = join(appRoot, "lib", "generated");
+  await mkdir(tsDir, { recursive: true });
+  const ts = `/* AUTO-GENERATED by scripts/prepare-assets.mjs — do not edit. */
+import type { AssetManifest } from "@/lib/manifest";
+
+export const assetManifest: AssetManifest = ${JSON.stringify(manifest, null, 2)};
+`;
+  await writeFile(join(tsDir, "asset-manifest.ts"), ts);
+
+  if (!available) {
+    console.warn(
+      "[assets] WARNING: no installer found. The portal will fall back to the " +
+        "GitHub download link. Commit GembyAV.exe at the repo root or set " +
+        "GEMBYAV_EXE_PATH to fix this.",
+    );
+  }
+  console.log(`[assets] manifest -> public/downloads/manifest.json`);
+}
+
+main().catch((err) => {
+  // Never break `npm run build` because of a missing binary.
+  console.warn(`[assets] non-fatal: ${err.message}`);
+  process.exit(0);
+});

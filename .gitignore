@@ -1,0 +1,32 @@
+# --- Python -----------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# --- PyInstaller ------------------------------------------------------
+build/
+dist/
+*.spec.bak
+
+# --- Web portal (web/.gitignore covers these too; belt and braces) ----
+node_modules/
+.next/
+out/
+web/.data/
+web/public/downloads/*.exe
+web/public/downloads/manifest.json
+
+# --- Editors / OS -----------------------------------------------------
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# --- Env / secrets ----------------------------------------------------
+.env
+.env*.local
+.vercel
