@@ -6,7 +6,7 @@ import { Footer } from "@/components/footer";
 import { ChatWidget } from "@/components/chat-widget";
 import { SessionProvider } from "@/components/session-provider";
 import { SITE } from "@/lib/site";
-import { CHAT_MODEL, PRODUCT } from "@/lib/config";
+import { PRODUCT } from "@/lib/config";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE.url),
@@ -72,16 +72,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <ChatWidget />
           </div>
         </SessionProvider>
-
-        {/* Lets the widget tell the user which model is answering. */}
-        <script
-          id="gemby-runtime-config"
-          type="application/json"
-          // eslint-disable-next-line react/no-danger
-          dangerouslySetInnerHTML={{
-            __html: JSON.stringify({ model: CHAT_MODEL, version: PRODUCT.version }),
-          }}
-        />
       </body>
     </html>
   );
